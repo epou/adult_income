@@ -1,0 +1,660 @@
+---
+title: "PRAC2: Neteja i anàlisi de les dades"
+author: "Enric Pou"
+date: "2/1/2020"
+output:
+  html_document:
+    toc: yes
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load_libraries, include=FALSE}
+library(knitr)
+library(ggplot2)
+library(VIM)
+```
+
+# 1. Descripció del dataset
+
+El conjunt de dades obtingut es troba disponible a la web de Kaggle en aquest [enllaç](https://www.kaggle.com/johnolafenwa/us-census-data). El conjunt de dades total està format per 15 variables diferents de 48842 observacions de persones repartatis en 2 arxius CSV.
+
+Les variables d'aquest conjunt són:
+
+* **age**: Edat de la persona. _(enter més gran que 0)_
+* **workclass**: Classe del treball que exerceix. _(Private, Self-emp-not-inc, Self-emp-inc, Federal-gov, Local-gov, State-gov, Without-pay, Never-worked)_
+* **fnlwgt**: Pes final. És el nombre de persones el qual el cens creu que aquesta entrada representa. _(enter més gran que 0)_
+* **eduaction**: Nivell d'educació _(Bachelors, Some-college, 11th, HS-grad, Prof-school, Assoc-acdm, Assoc-voc, 9th, 7th-8th, 12th, Masters, 1st-4th, 10th, Doctorate, 5th-6th, Preschool)._
+* **education-num**: Nivell d'educació. _(enter més gran que 0)_
+* **marital-status**: Estat civil. _(Married-civ-spouse, Divorced, Never-married, Separated, Widowed, Married-spouse-absent, Married-AF-spouse.). civ = civil ; AF = armed forces_
+* **occupation**: Sector d'ocupació. _(Tech-support, Craft-repair, Other-service, Sales, Exec-managerial, Prof-specialty, Handlers-cleaners, Machine-op-inspct, Adm-clerical, Farming-fishing, Transport-moving, Priv-house-serv, Protective-serv, Armed-Forces.)_
+* **relationship**: Estat sentimental. _(Wife, Own-child, Husband, Not-in-family, Other-relative, Unmarried.)_
+* **race**: Ètnia. _(White, Asian-Pac-Islander, Amer-Indian-Eskimo, Other, Black)_
+* **sex**: Sexe. _(Male, Female)_
+* **capital-gain**: Guanys provinents de fonts d'inversió diferents del salari. _(enter més gran que 0)_
+* **capital-loss**: Pèrdues provinents de fonts d'inversió diferents del salari. _(enter més gran que 0)_
+* **hour-per-week**: Hores treballades a la setmana. _(enter)_
+* **native-country**: País natal.
+* **income**: Ingressos _(<=50k, >50k)_
+
+Aquestes dades formen part del cens d'Estats Units de l'any 1994. 
+
+Aquest dataset incorpora tot un recull de variables sociologiques amb les quals es pot predir el nivell d'ingressos (inferior o superior a 50000$). És important remarcar que aquest estudi es pot utiltizar per a poder determinar si existeix un biaix social que afecti a un conjunt o minoria de persones envers el seu nivell d'ingressos. El fet de tenir dades sensibles, les quals des de fa temps s'estan fent estudis per mirar que no hi hagi diferències salarials en igualtats de condicions, tals com el sexe, la raça, etc; es un punt de motivació per a fer un primer estudi per desmentir o reafirmar aquestes suposicions. 
+
+Al llarg d'aquest document, es preten donar un enfoc d'aquest caire i intentar respondre aquest tipus de preguntes.
+
+# 2. Integració i selecció de les dades d'interès.
+
+Primer de tot, veiem que les dades estan repartides en 2 arxius CSV diferents:
+
+* _adult-test.csv_
+* _adult-training.csv_
+
+El primer que farem serà carregar ambdos arxius i juntar-los, per obtenir un dataframe amb la totalitat de les dades.
+
+```{r read_csv}
+# Carreguem l'arxiu de training i de test.
+datatrain <- read.csv("adult-training.csv", header = FALSE, stringsAsFactors = FALSE)
+datatest <- read.csv("adult-test.csv", skip = 1, header=FALSE, stringsAsFactors = FALSE)
+
+data_colnames <- c(
+  "age",
+  "workclass",
+  "fnlwgt",
+  "education",
+  "education-num",
+  "marital-status",
+  "occupation",
+  "relationship",
+  "race",
+  "sex",
+  "capital-gain",
+  "capital-loss",
+  "hour-per-week",
+  "native-country",
+  "income"
+)
+
+# Assignem els noms a les columnes pertinents.
+names(datatrain) <- data_colnames
+names(datatest) <- data_colnames
+
+# Ajuntem els dos dataframes.
+df <- rbind(datatrain, datatest)
+```
+
+Comprovem l'estructura de les dades
+```{r structure}
+str(df)
+```
+
+Veiem la presència de espais en blanc en totes les cadenes de caràcters. Primer de tot doncs, les eliminarem:
+
+```{r removeWS}
+# Obtenim quines columnes són de tipus character
+truth <- sapply(df,is.character)
+
+# Per a les columnes de tipus charcaters, els hi apliquem la funcio trimws
+# i el resultat l'ajuntem (cbind) amb les columnes que no són de tipus character
+df <- data.frame(
+  cbind(
+    sapply(
+      df[,truth],
+      trimws,
+      which="both"
+    ),
+    df[,!truth]
+  )
+)
+
+str(df)
+```
+Veiem ara que totes les columnes són de la classe correcta. Les categòriques són de tipus `Factor`; mentre que les enteres són de tipus `int`.
+
+Anem ara a fer un resum estadístic de les dades:
+```{r summary}
+summary(df)
+```
+
+En el resultat anterior podem comprovar que:
+
+* No existeixen inconsistències entre el que en diu la descripció del dataset envers la variable edat (age > 16 && age <= 100).
+* Com es distribueixen les variables qualitatives.
+* Sospitem la presència de outliers per a la variable `hours-per-week` (99 hores equival a treballar de mijta 19,8h diaries)
+* Hi ha més presència de homes que dones al dataset.
+* La majoria de registres són de persones natives de EEUU.
+* Hi ha més registres amb un `income` superior a 50k.
+
+Respecte a l'objectiu del nostre análisi podem eliminar de la variable `fnlwgt` ja que no aporta "poder" predictiu i, veiem que es pot prescindir de la columna `education` ja que existeix la columna `education.num` que n’és una copia però conté el nombre d’anys estudiats (int) en comptes de paraules (chr).
+
+```{r removevariables}
+df$fnlwgt <- NULL
+df$education <- NULL
+```
+
+# 3. Neteja de les dades
+
+Abans de res, ens hem d'assegurar que els nivell de les columnes que són de tipus `factor` són correctes.
+
+```{r factorLevel}
+factors <- sapply(df, is.factor)
+lapply(df[, factors], levels)
+```
+
+Veiem que a la columna `income` trobem els mateixos valors acabats amb o sense punt final, generant així 4 nivell diferents, quan n'hi hauria d'haver només 2. Ho corregim:
+
+```{r correccioLevel}
+levels(df$income)[levels(df$income)=="<=50K."] <- "<=50K"
+levels(df$income)[levels(df$income)==">50K."] <- ">50K"
+levels(df$income)
+```
+
+Finalment, anem a ajuntar les columnes `capital.gain` i `capital.loss` en una de sola, a partir de la resta de les pèrdues envers els guanys. 
+
+```{r capital}
+df["capital"] = df$capital.gain - df$capital.loss
+df$capital.gain <- NULL
+df$capital.loss <- NULL
+```
+
+## 3.1 Elements buits
+
+Anem a comprovar si el nostre conjunt de dades conté valors buits.
+
+```{r buits}
+print("Casos amb NA")
+colSums(is.na(df))
+
+print("Casos amb cadenes de text buides")
+colSums(df == "")
+```
+
+S'observa doncs que no hi ha presència de valors buits. Ara bé, si ens fixem amb el joc de dades s'observa la presència del caràcter `?` en algun de les cel·les. Anem a veure la seva estadística:
+
+```{r valorsinterrogant}
+colSums(df == "?")
+```
+
+Per a fer més fàcil les següents tasques, anem a substituïr el valor '?' per a NA (_Not available_), que R l'interpreta com un valor buit.
+
+```{r interrogantToNA}
+df[df == "?"] <- NA
+```
+Arribats a aquest punt, hem de decidir què fer amb aquest valors erronis. Una opció sería la de eliminar aquests registres però això suposaría desaprofitar informació.
+
+És per això doncs, que imputarem aquest valors. Trobem diferents tècniques per a imputar aquests valors: substituïr pel valor més freqüent, per la mitja, etc. El principal tipus de problema amb aquest tipus d'imputació és que es substitueixen tots els valors buits de cada columna per un mateix valor, sense tenir en compte com afecten les altres variables. És per això, que s'ha decidit utilitzar el mètode d'imputació basat en el _K_ veïns més pròxims (kNN). D'aquesta manera l'imputació tindrà en compte la relació de la columna a imputar amb les altres, i per a cada cas se li assignarà un valor.
+
+```{r kNNimputation}
+df <- kNN(data=df, variable = c("workclass", "occupation", "native.country"), impNA=TRUE, imp_var=FALSE)
+```
+
+Un cop imputats els valors, tornem a revisar si hi ha valors NA (recordem que s'ha substituit els `?` per NA. 
+
+```{r buitscheck}
+colSums(is.na(df))
+```
+
+Tal com s'observa, ja no hi ha valors buits.
+
+## 3.2 Valors extrems
+
+En aquest apartat ens centrarem en detectar i corregir (si escau) els possibles outliers presents en cadascuna de les columnes numèriques. El primer que farem serà buscar valors sentineles de manera visual. Aquest análisi només el durem a terme per a les variables quantitatives.
+
+```{r sentinelas}
+attributs_quantitatius = c('age', 'education.num', 'capital', 'hour.per.week')
+for (columnName in attributs_quantitatius){
+  # Generem una graella amb 1 fila i 2 columnes
+  par(
+    mfrow=c(1,2),
+    oma = c(0, 0, 2, 0)
+  )
+  # Mostrem el histograma
+  hist(
+    df[,columnName],
+    main="Histogram",
+    xlab=paste(columnName, " values")
+  )
+  # Mostrem el boxplot
+  boxplot(
+    df[,columnName],
+    main="Boxplot"
+  )
+  # Posem titol al conjunt de grafiques.
+  mtext(
+    paste("Analysis for ",columnName),
+    outer = TRUE,
+    cex = 1.5
+  )
+}
+```
+
+Arribats a aquest punt, s'ha d'estudiar cada cas en detall per a decidir què fer amb els possibles outliers. En el cas de corregir els valors, ho farem per la seva mitjana i només ho aplicarem per aquells casos on el Z-score del valor sigui de més de 3 (positiu o negatiu).
+
+Edat:
+```{r ageoutlier}
+df$age[which(abs(scale(df$age))>3)] <- mean(df$age, na.rm=TRUE)
+```
+
+En el cas de `education.num` no podem considerar com a outliers cap valor, ja que aquesta variable és una simple representació numèrica de la columna, previament eliminada, `education`. Per tant, no fa referència a dades que s'han pogut entrar de forma errónia.
+
+El `capital` no l'ajustarem ja que la gran majoria dels valors són 0, per tant tot els valors diferents de 0 el sistema els considera com a outliers.
+
+Finalment, si donem un cop d'ull a la variable d'ocupació, veiem que hi ha persones que han posat xifres molt altes en les hores de la seva joranda laboral (hi ha casos que superen les 90 hores setmanals). Si ens fixem en aquests registres veiem que es dediquen principalment a la ramaderia-pesca, transportistes, i altres feines on es viatja sovint o es treballa per temporades i que implica estar fora de casa durant un jornada llarga. Per altre costat, pel valors extremadament petits trobem gent gran (possible jubilats) o estudiants. Remplaçarem aquest valors per la seva mitja.
+
+```{r hoursperweek}
+df$hour.per.week[which(abs(scale(df$hour.per.week))>3)] <- mean(df$hour.per.week, na.rm=TRUE)
+```
+
+# 4. Anàlisi de les dades
+## 4.1 Selecció dels grups de dades que es volen analitzar/comparar
+
+Degut a que el nostre objectiu era detectar biaixos de caràcter social, agruparem les diferents característiques segons cada variable.
+
+Començarem per a la variable `workclass`.
+
+```{r tableworkclass}
+table(df$workclass)
+```
+
+Podríem agrupar-los segons si treballen pel govern (acaba en “-gov”), si treballen per ells mateixos (comença en “Self-emp”) i si no tenen feina (“Without-pay” i “Never- worked”)
+
+```{r agruparworkclass}
+# Convertim a string per a poder treballar
+df$workclass <- as.character(df$workclass)
+# Agrupem els valors que comencen per " Self-emp" i li posem "Self"
+df$workclass[startsWith(df$workclass, "Self-emp")] = "Self"
+# Agrupem els valors que acaben per "-gov" i li posem "Govern"
+df$workclass[endsWith(df$workclass, "-gov")] = "Govern"
+# Agrupem els valors " Never-worked" i " Without-pay" i li posem "No-work"
+df$workclass[df$workclass == "Never-worked"] = "No-work"
+df$workclass[df$workclass == "Without-pay"] = "No-work"
+# Tornem a transformar a factor
+df$workclass <- as.factor(df$workclass)
+```
+
+Si tornem a revisar com han quedat distribuïts els valors:
+
+```{r tableworkclass2}
+table(df$workclass)
+```
+
+Passem ara al variable que indica l'estat civil: `marital.status`.
+
+```{r tablemaritalstatus}
+table(df$marital.status)
+```
+En aquest cas podem agrupar els valors que comencen per “Married”:
+
+```{r agruparmaritalstatus}
+df$marital.status <- as.character(df$marital.status)
+# Agrupem els valors que comencen per " Married-" i li posem "Married"
+df$marital.status[startsWith(df$marital.status, "Married-")] = "Married"
+df$marital.status <- as.factor(df$marital.status)
+```
+
+Si tornem a revisar com han quedat distribuïts els valors:
+
+```{r tablemaritalstatus2}
+table(df$marital.status)
+```
+
+Ens interesa també agrupar el registres segons la seva nacionalitat, separant per els natius de EEUU i els que no.
+
+```{r agruparnationality}
+df$native.country <- as.character(df$native.country)
+# Agrupem els valors que no siguin de EEUU
+df$native.country[df$native.country != "United-States"] = "Other"
+df$native.country <- as.factor(df$native.country)
+```
+
+Finalment, podem agrupar les edats segons les etapes de lavida. Veiem que el valor mínim de l'edat són `r min(df$age)`. Considerarem les següents etapes:
+
+* Adolescent: 12 < Edat <= 19
+* Adult-primerenc: 20 < Edat <= 25
+* Adult: 26 < Edat <= 49
+* Vellesa: Edat > 50
+
+Per tant, crearem una nova variable anomenada “StageOfLife” on li aplicarem els llindars anteriorment esmentats. Per a fer-ho ens definim primer una funció per calcular l’etapa de la vida segons l’edat i després generem una nova columna a partir de crides a aquesta funció.
+
+```{r stageoflife}
+# Funcio per calcular el stage of life
+stageOfLife <- function(age) {
+if(12<age&age<=19) { result <- "Adolescent"
+  } else if (20 < age & age <= 25) {
+    result <- "Adult-primerenc"
+  } else if (26 < age & age <= 49) {
+    result <- "Adult"
+} else {
+    result <- "Vellesa"
+  }
+  return(result)
+}
+
+# Afegim una nova variable a partir d'agrupar el camp age.
+df$StageOfLife <- sapply(df$age, stageOfLife)
+df$StageOfLife <- as.factor(df$StageOfLife)
+```
+
+## 4.2 Comprovació de la normalitat i homogeneïtat de la variància.
+
+Un cop agrupats els valors anteriors, tenim només tres variables que són numèriques: `age`, `eduaction.num`, `hour.per.week` i `capital`.
+
+Farem ús de les gràfiques Q-Q y el histograma.
+
+```{r normcolumnToAnalyze}
+
+columnToAnalyze <- c("age", "education.num", "hour.per.week", "capital")
+
+for (columnName in columnToAnalyze) {
+  # Generem una graella amb 1 fila i 2 columnes
+  par(
+    mfrow=c(1,2),
+    oma = c(0, 0, 2, 0)
+  )
+  # Mostrem el histograma
+  hist(
+    df[,columnName],
+    main="Histogram",
+    xlab=paste(columnName, " values")
+  )
+  
+  # Mostrem el qqplot
+  qqnorm(df[,columnName], main = paste("Normal Q-Q Plot for", columnName))
+  qqline(df[,columnName], col = "steelblue", lwd = 2)
+  
+}
+
+
+```
+
+S'observa dels resultats anteriors, que les úniques variables (considerant només l'inspecció visual) que sembla que podriem considerar com a normal són l'edat i l'educació, ja que són les dues variables la gràfiques Q-Q de les quals encaixa millor amb la linea de quantils.
+
+Per a ser més concisos aplicarem un test de normalitat. Degut a que el test de Shapiro-Wilk accepta només com a màxim 5000 valors d'entrada i nosaltres en tenim més, usarem el test de normalitat d'Anderson-Darling. Aquest test té com a hipòtesi nul·la que la mostra és una distribució normal. Per tant, segons el resultat del p-valor l’acceptarem (cas p−valor>α) o el rebutjarem (cas p−valor<α).
+
+```{r andersondarlingtest}
+library(nortest)
+for (columnName in columnToAnalyze) {
+  print(ad.test(df[,columnName]))
+}
+```
+
+Veiem doncs, que el test ens desmenteix el que creiem. Com que per a tots els casos, el p-valor és inferior al nostre coeficient alpha (0,05), hem de rebutjar l'hipotesi nul·la i entenem que no segueixen una distribució normal.
+
+Tot i això, gràcies el teorema del límit central i al fet de tenir més de 30 mostres, podem aproximar les variables com a una distribució normal de mitja 0 i desviació estandar 1.
+
+## 4.3 Proves estadístiques
+
+### Existeix una diferència de genere respecte els ingressos?
+
+La nostra hipotesi és:
+
+* $H_0 = \mu_{male} - \mu_{female} = 0$
+* $H_1 = |\mu_{male} - \mu_{female}| \neq 0$
+
+Anem a mirar com esta distribuit:
+```{r sexvsincome}
+table(df$sex, df$income)
+prop.table(table(df$sex, df$income), margin = 1)
+```
+
+A simple vista podem veure que la proporció de dones qu es troben a la part baixa d'ingressos és més elevada. A més, s'observa que hi ha més homes que dones en el dataset.
+
+Anem doncs a aplicar el test Chi-squared per determianr la independència entre aquestes dues variables.
+
+```{r chisqtest}
+chisq.test(table(df$sex, df$income))
+```
+
+S'observa un p-valor molt petit, per tant rebutgem l'hipotesi nul·la i ens quedem amb l'alternativa; és a dir, les dues variables no són independents. Podem afirmar doncs que existeix un biaix de sexe en el nivell d'ingressos. 
+
+### Correlacio entre variables
+
+A continuació, anem a veure la correlació entre totes les variables del conjunt de dades. Per a fer-ho ens ajudarem de la llibreria `polycor` que ens permet calcular la correlació entre conjunt de dades numèriques i categòriques.
+
+```{r correlation, message=FALSE, warning=FALSE}
+library(polycor)
+
+corr_matrix<-hetcor(df, ML=FALSE, std.err=FALSE)
+corr_matrix$correlations
+```
+
+Per a una simple interpretació, mostrarem la matriu de correlació resultant mitjançant un mapa de calor.
+
+```{r correlationHeatmap, message=FALSE, warning=FALSE}
+library(reshape2)
+
+ggplot(
+  melt(corr_matrix$correlations), 
+  aes(Var2, Var1, fill = value)
+)+
+geom_tile(color = "white")+
+scale_fill_gradient2(
+  low = "blue", 
+  high = "red", 
+  mid = "white", 
+  midpoint = 0, 
+  limit = c(-1,1), 
+  space = "Lab", 
+  name="Correlation") +
+theme_minimal()+ # minimal theme
+theme(
+  axis.text.x = element_text(
+    angle = 45, vjust = 1, 
+    size = 12, hjust = 1))+
+ coord_fixed()
+```
+
+Dels resultats anteriors s'observa:
+
+* Tal i com era de suposar, existeix una forta relació entre la variable `age` i la variable `StageOfLife`.
+* Existeix un relació entre el sexe i el tipus de relació sentimental.
+* Hi ha relació entre el país natiu i el nivell d'estudis.
+* Hi ha relació entre el país natiu i la raça.
+* Les principals relacions amb els ingressos són: l'estat civil, el tipus de relació, sexe, i educació. En segon pla trobem: raça, edat, hores treballades i capital.
+
+### Model de regressió logística
+
+Tal com s'ha comentat previament, sería d'interés poder realitzar prediccions sobre la possibilitat de poder tenir un nivell d'ingresos superior o no a 50000 dolars. Per a fer-ho es calcularà un model de regressió logística utilitzant tant les variables quantitatives com les qualitatives.
+
+Primer ens dividim el conjunt en train/test.
+
+```{r traintest}
+library(caTools, message=FALSE, warning=FALSE)
+# Fixem un valor per a que es pugui reproduir
+set.seed(420)
+samples = sample.split(df$age, SplitRatio = 0.75)
+
+# Per a aquest prova usarem la variable de edat que indica l'etapa de la vida. Per això borrem la variable age
+df_temp <- df
+df_temp$age <- NULL
+
+df_train <- subset(df_temp, samples == TRUE)
+df_test <- subset(df_temp, samples == FALSE)
+```
+
+Construirem una regressió logística utilitzant la variable `income` com a sortida i totes les altres variables com a predictors.
+
+```{r regressioLogistica}
+regLog <- glm(income ~ ., data = df_train, family = binomial('logit'))
+summary(regLog)
+```
+
+La regressió logística està modelant la probabilitat que un individu faci més de 50.000 dòlars anuals. Per tant, una resposta més propera a 1 indica una possibilitat més elevada de guanyar més de 50.000 dòlars, mentre que una resposta més propera a 0 indica una possibilitat més gran de guanyar menys de 50.000 dòlars. Així, s'utilitza un llindar de 0,5 per determinar si es preveu que un individu guanyi més de 50.000 dòlars anuals o no. 
+
+Anem a representar la matriu de confusió per avaluar el nivell de predicció dels ingressos.
+
+```{r regLogconfMatrix}
+prob <- predict(regLog, df_test, type = 'response')
+pred <- rep('<=50K', length(prob))
+pred[prob >= 0.5] <- '>50K'
+
+# Matriu de confusio
+conf_matrix <- table(pred, df_test$income)
+conf_matrix
+```
+
+Així doncs obtenim una presició (en percentatge):
+```{r accuracy}
+acc = (conf_matrix[1,1]+conf_matrix[2,2])/sum(conf_matrix)*100
+acc
+```
+
+```{r ROC, message=FALSE, warning=FALSE}
+library(pROC)
+roc(df_test$income ~ prob, plot = TRUE, print.auc = TRUE)
+```
+
+S'obté una area sota la corba (AUC) que ens permet concloure que el model és bo.
+
+Finalment anem a veure els Odd Ratios per a saber l'aportació de cada coeficient:
+
+```{r orderdeCoef}
+data.frame(V1=sort(exp(coefficients(regLog)), decreasing=TRUE))
+```
+
+D'aquest resultat se'n poden extreure més biaxos socials (respecte ingressar més de 50000 dolars).
+
+* De totes les races, la raça negra és la que té el OR més baix.
+* El sexe masculí té 2.1 més de OR.
+* Ser natiu de EEUU té 1.32 més de OR.
+
+A més, se n'extreuen altres conclusion com:_
+
+* Per cada any extra d'estudi, augmenta en 1,32 el OR.
+* Quan més vell més OR tens.
+* Les families (es considera `relationshipWife` i `marital.statusMarried`) tenen més OR que la gent separada, divorciada o viuda.
+* Les ocupacions de rol executiu i forces armades tenen més OR que les altres.
+
+# 5 Gràfiques
+
+A part de les gràfiques anterior, podem afegir-ne d'extres que reforcen les conclusions extretes:
+
+Visualitzarem la relació entre la variable `sex` i `income`.
+
+```{r grafSexIncome}
+ggplot(
+    data=df,
+aes( x=sex,
+        fill=income
+    )
+)+geom_bar(position="fill")
+```
+
+Anem a observar ara la relació `workclass` amb `income` i `sex` a la vegada.
+
+```{r graphworkclassincomesex}
+# Visualitzem la relació entre les variables "workclass", "income" i "sex".
+ggplot(
+    data=df,
+    aes(
+      x=workclass,
+      fill=income
+    )
+) + geom_bar(position="fill") + facet_wrap(~sex)
+```
+
+En aquest cas veiem que, en el cas de les dones, les que treballen per elles mateixes són les que tenen més possibilitats de superar els 50K$, mentre que en els homes està disputat entre els que treballen pel govern i els que treballen per ells mateixos.
+
+Anem a veure ara la quantitat de persones repartides segons la feina:
+
+```{r workclassincomesex}
+ggplot(
+  data=df,
+  aes(
+    x=workclass,
+    fill=income
+  )
+) + geom_bar() + facet_wrap(~sex)
+```
+
+Tot i que hem vist que les dones que treballen per elles mateixes són les que tenen més probabilitats de superar el llindar de 50K$, veiem que és el sector amb menys presència d’aquest sexe. El cas més present en ambdós sexes és treballar a una empresa privada. 
+
+Si ens fixem en el tipus de feina, anem a veure quina feina és més probable segons els estudis d'una persona.
+
+```{r jobsforstudy}
+# Guardem una variable amb els percentatges que relacionen ocupacio ieducació
+pWorkEdu <- prop.table(table(df$occupation, df$education.num), 1) * 100
+# Agafem el nom de la fila que té el màxim de probabilitat
+apply(pWorkEdu, 2, function(x) rownames(pWorkEdu)[which.max(x)])
+```
+
+Aquest informació la podem fer servir, a la vegada, per veure la diferència entre el nivell d'ingressos segons l'estudi (i relecionar-ho amb la posició laboral).
+
+```{r educationNumincom}
+ggplot(
+    data=df,
+aes( x=education.num,
+        fill=income
+    )
+)+geom_bar(position="fill")
+```
+
+Per tant confirmem que a més educació més possibilitats de superar els 50000 dolars d'ingresos.
+
+A continuació ens proposem observar la relació entre “marital-status” i la nova variable que ens hem creat `StageOfLife`.
+
+```{r StageOfLifemaritalstatus}
+# Relació entre les variables "StageOfLife" i "marital.status"
+ggplot(
+    data=df,
+    aes(
+      x=StageOfLife,
+      fill=`marital.status`
+    )
+) + geom_bar(position="fill")
+```
+
+Veiem que es compleix clarament el que suposàvem. A l’adolescència la gran majora mai s’ha casat. Al principi de l’adultesa comencen a incrementar els valors de casaments i, amb menys mesura, de divorcis. A la següent etapa s’incrementen notablement els casaments i també els divorcis. Finalment, a l’última etapa, els valors anterior es queden bastant estancats però el nombre de persones viudes augmenta.
+
+I si veiem la relació entre `marital-status` i `income`:
+
+```{r maritalstatus}
+ggplot(
+  data=df,
+  aes(
+    x=`marital.status`,
+    fill=income
+  )
+) + geom_bar(position="fill")
+```
+
+Podem observar que de les persones que estan casades quasi la meitat del grup passa el llindar de 50K$.
+
+Anem a mirar la comparació segons la raça:
+
+```{r raceincome}
+ggplot(
+  data=df,
+  aes(
+x=`race`,
+    fill=income
+  )
+) + geom_bar(position="fill") + facet_wrap(~sex)
+```
+
+Podem dir que la raça “Blanca” i la “Asian- Pac-Islander” són les que tenen més possibilitats de superar el llindar. Concretament els homes.
+
+# 6 Conclusions
+
+Al llarg de tota la pràctica s'han dut a terme tota una sèrie de tècniques amb la finalitat principal de netejar les dades i analitzar-les. Primer de tot s'han detectat els valor buits i s'han imputat mitjançant kNN. Més tard, s'han tractat els outliers que s'han cregut necessaris i s'han agrupat i seleccionat les dades en diferents conjunts per al seu posterior analisis.
+
+En el nostre anàlisi, voliem mostrar si hi havia un biaix clar que comprometes les característiques sociològiques dels registres (tals com sexe, raça, nivell d'estudis) envers el seu nivell d'ingressos. En la primera prova de totes, s'ha demostrat que no existeix independència entre el sexe de la persona i el seu nivell d'ingressos, cosa que ens fa pensar en una escletxa salarial basada en el sexe.
+
+En la segona prova, s'ha buscat la correlació entre totes les dades del conjunt i s'ha pogut veure quines eren les seves relacions. Cal destacar que s'han trobat relacions entre el sexe i l'estat cívil; entre la nacionalitat i la raça; i la nacionalitat i el nivell d'estudis. Vull esmentar que no s'ha trobat relació entre la raça i el nivell d'estudis, però si entre la raça i el nivell d'ingressos, fet que ens porta a pensar en una escletxa salarial basada en la raça també. A part, factors que estan principalment relacionats amb els ingressos són: l'estat civil, el tipus de relació, sexe (que ens reafirma la conclusió anterior), i l'educació; i en en menys mesura amb la raça, edat, hores treballades i capital.
+
+Per finalitzar, s'ha fet una regressió logística per a predir si el nivell d'ingressos és inferior o superior als 50000 dolars a partir de la resta de variables (agrupades) del dataset. Els resultats del model obtingut han sigut bons, amb una precisió superior al 84%. A més, quan s'ha observat l'aportació de OR de cada coeficient s'ha detectat que de totes les races, la raça negra és la que té el OR més baix, el sexe masculí té 2.1 més de OR i que ser natiu de EEUU té 1.32 més de OR.
+
+# 7 Codi i dades
+
+El códi en R es pot trobar a GitHub en el següent enllaç:
+
+https://github.com/epou/adult_income/blob/master/census_analysis.R
+
+Les dades de sortida un cop netejades les dades s'han exportat mitjançant la comanda següent:
+
+`write.csv(df, file="adult-out.csv")`
+
+Es troben al següent enllaç de GitHub: https://github.com/epou/adult_income/blob/master/adult-out.csv
