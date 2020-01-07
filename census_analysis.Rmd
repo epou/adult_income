@@ -1,11 +1,13 @@
 ---
-title: "PRAC2: Neteja i anàlisi de les dades"
+title: 'PRAC2: Neteja i anàlisi de les dades'
 author: "Enric Pou"
 date: "2/1/2020"
 output:
-  html_document:
+  pdf_document:
     toc: yes
+  html_document:
     df_print: paged
+    toc: yes
 ---
 
 ```{r setup, include=FALSE}
@@ -42,6 +44,10 @@ Les variables d'aquest conjunt són:
 
 Aquestes dades formen part del cens d'Estats Units de l'any 1994. 
 
+Aquest dataset incorpora tot un recull de variables sociologiques amb les quals es pot predir el nivell d'ingressos (inferior o superior a 50000$). És important remarcar que aquest estudi es pot utiltizar per a poder determinar si existeix un biaix social que afecti a un conjunt o minoria de persones envers el seu nivell d'ingressos. El fet de tenir dades sensibles, les quals des de fa temps s'estan fent estudis per mirar que no hi hagi diferències salarials en igualtats de condicions, tals com el sexe, la raça, etc; es un punt de motivació per a fer un primer estudi per desmentir o reafirmar aquestes suposicions. 
+
+Al llarg d'aquest document, es preten donar un enfoc d'aquest caire i intentar respondre aquest tipus de preguntes.
+
 # 2. Integració i selecció de les dades d'interès.
 
 Primer de tot, veiem que les dades estan repartides en 2 arxius CSV diferents:
@@ -49,7 +55,7 @@ Primer de tot, veiem que les dades estan repartides en 2 arxius CSV diferents:
 * _adult-test.csv_
 * _adult-training.csv_
 
-El primeer que farem serà carregar ambdos arxius i juntar-los, per obtenir un dataframe amb la totalitat de les dades.
+El primer que farem serà carregar ambdos arxius i juntar-los, per obtenir un dataframe amb la totalitat de les dades.
 
 ```{r read_csv}
 # Carreguem l'arxiu de training i de test.
@@ -105,6 +111,8 @@ df <- data.frame(
     df[,!truth]
   )
 )
+
+str(df)
 ```
 Veiem ara que totes les columnes són de la classe correcta. Les categòriques són de tipus `Factor`; mentre que les enteres són de tipus `int`.
 
@@ -117,12 +125,12 @@ En el resultat anterior podem comprovar que:
 
 * No existeixen inconsistències entre el que en diu la descripció del dataset envers la variable edat (age > 16 && age <= 100).
 * Com es distribueixen les variables qualitatives.
-* Sospitem la presència de outliers per a la variable `capital-gain` i `hours-per-week` (99 hores equival a treballar de mijta 19,8h diaries)
+* Sospitem la presència de outliers per a la variable `hours-per-week` (99 hores equival a treballar de mijta 19,8h diaries)
 * Hi ha més presència de homes que dones al dataset.
 * La majoria de registres són de persones natives de EEUU.
 * Hi ha més registres amb un `income` superior a 50k.
 
-Respecte a l'objectiu del nostre análisi podem eliminar de la variable `fnlwgt` ja que no aporta "poder" predictiu i, veiem que es pot prescindir de la columna `education` ja que existeix la columna `education-num` que n’és una copia però conté el nombre d’anys estudiats (int) en comptes de paraules (chr).
+Respecte a l'objectiu del nostre análisi podem eliminar de la variable `fnlwgt` ja que no aporta "poder" predictiu i, veiem que es pot prescindir de la columna `education` ja que existeix la columna `education.num` que n’és una copia però conté el nombre d’anys estudiats (int) en comptes de paraules (chr).
 
 ```{r removevariables}
 df$fnlwgt <- NULL
@@ -225,7 +233,7 @@ for (columnName in attributs_quantitatius){
 }
 ```
 
-Arribats a aquest punt, s'ha d'estudiar cada cas en detall per a decidir què fer amb els possibles outliers. En el cas de corregir els valors, ho farem per la seva mitjan i només ho aplicarem per aquells casos on el Z-score del valor sigui de més de 3 (positiu o negatiu).
+Arribats a aquest punt, s'ha d'estudiar cada cas en detall per a decidir què fer amb els possibles outliers. En el cas de corregir els valors, ho farem per la seva mitjana i només ho aplicarem per aquells casos on el Z-score del valor sigui de més de 3 (positiu o negatiu).
 
 Edat:
 ```{r ageoutlier}
@@ -236,7 +244,7 @@ En el cas de `education.num` no podem considerar com a outliers cap valor, ja qu
 
 El `capital` no l'ajustarem ja que la gran majoria dels valors són 0, per tant tot els valors diferents de 0 el sistema els considera com a outliers.
 
-Finalment, si donem un cop d'ull a la variable d'ocupació, veiem que hi ha persones que han posat xifres molt altes en les hores de la seva joranda laboral (hi ha casos que superen les 90 hores setmanals). Si ens fixem en aquests registres veiem que es dediquen principals a la ramaderia-pesca, transportistes, i altres feines on es viatja sovint o es treballa per temporades i que implica estar fora de casa durant un jornada llarga. Per altre costat, pel valors extremadament petits trobem gent gran (possible jubilats) o estudiants. Remplaçarem aquest valors per la seva mitja.
+Finalment, si donem un cop d'ull a la variable d'ocupació, veiem que hi ha persones que han posat xifres molt altes en les hores de la seva joranda laboral (hi ha casos que superen les 90 hores setmanals). Si ens fixem en aquests registres veiem que es dediquen principalment a la ramaderia-pesca, transportistes, i altres feines on es viatja sovint o es treballa per temporades i que implica estar fora de casa durant un jornada llarga. Per altre costat, pel valors extremadament petits trobem gent gran (possible jubilats) o estudiants. Remplaçarem aquest valors per la seva mitja.
 
 ```{r hoursperweek}
 df$hour.per.week[which(abs(scale(df$hour.per.week))>3)] <- mean(df$hour.per.week, na.rm=TRUE)
@@ -364,7 +372,7 @@ for (columnName in columnToAnalyze) {
 
 ```
 
-S'observa dels resultats anteriors, que les úniques variables (considerant només l'inspecció visual) que podem considerar com a normal són l'edat i l'educació, ja que són les dues variables la gràfiques Q-Q de les quals encaixa millor amb la linea de quantils.
+S'observa dels resultats anteriors, que les úniques variables (considerant només l'inspecció visual) que sembla que podriem considerar com a normal són l'edat i l'educació, ja que són les dues variables la gràfiques Q-Q de les quals encaixa millor amb la linea de quantils.
 
 Per a ser més concisos aplicarem un test de normalitat. Degut a que el test de Shapiro-Wilk accepta només com a màxim 5000 valors d'entrada i nosaltres en tenim més, usarem el test de normalitat d'Anderson-Darling. Aquest test té com a hipòtesi nul·la que la mostra és una distribució normal. Per tant, segons el resultat del p-valor l’acceptarem (cas p−valor>α) o el rebutjarem (cas p−valor<α).
 
@@ -375,9 +383,9 @@ for (columnName in columnToAnalyze) {
 }
 ```
 
-Veiem doncs, que el test ens desmenteix el que creeim. Com que per a tots els casos, el p-valor és inferior al nostre coeficient alpha (0,05), hem de rebutjar l'hipotesi nul·la i entenem que no segueixen una distribució normal.
+Veiem doncs, que el test ens desmenteix el que creiem. Com que per a tots els casos, el p-valor és inferior al nostre coeficient alpha (0,05), hem de rebutjar l'hipotesi nul·la i entenem que no segueixen una distribució normal.
 
-Tot i això, gràcies el teorema del límit centra i al fet de tenir més de 30 mostres, podem aproximar les variables com a una distribució normal de mitja 0 i desviació estandar 1.
+Tot i això, gràcies el teorema del límit central i al fet de tenir més de 30 mostres, podem aproximar les variables com a una distribució normal de mitja 0 i desviació estandar 1.
 
 ## 4.3 Proves estadístiques
 
@@ -406,14 +414,18 @@ S'observa un p-valor molt petit, per tant rebutgem l'hipotesi nul·la i ens qued
 
 ### Correlacio entre variables
 
-```{r correlation}
+A continuació, anem a veure la correlació entre totes les variables del conjunt de dades. Per a fer-ho ens ajudarem de la llibreria `polycor` que ens permet calcular la correlació entre conjunt de dades numèriques i categòriques.
+
+```{r correlation, message=FALSE, warning=FALSE}
 library(polycor)
 
 corr_matrix<-hetcor(df, ML=FALSE, std.err=FALSE)
 corr_matrix$correlations
 ```
 
-```{r correlationHeatmap}
+Per a una simple interpretació, mostrarem la matriu de correlació resultant mitjançant un mapa de calor.
+
+```{r correlationHeatmap, message=FALSE, warning=FALSE}
 library(reshape2)
 
 ggplot(
@@ -451,8 +463,9 @@ Tal com s'ha comentat previament, sería d'interés poder realitzar prediccions 
 
 Primer ens dividim el conjunt en train/test.
 
-```{r traintest}
+```{r traintest, message=FALSE, warning=FALSE}
 library(caTools)
+# Fixem un valor per a que es pugui reproduir
 set.seed(420)
 samples = sample.split(df$age, SplitRatio = 0.75)
 
@@ -491,7 +504,7 @@ acc = (conf_matrix[1,1]+conf_matrix[2,2])/sum(conf_matrix)*100
 acc
 ```
 
-```{r ROC}
+```{r ROC, message=FALSE, warning=FALSE}
 library(pROC)
 roc(df_test$income ~ prob, plot = TRUE, print.auc = TRUE)
 ```
@@ -640,8 +653,10 @@ Per finalitzar, s'ha fet una regressió logística per a predir si el nivell d'i
 
 El códi en R es pot trobar a GitHub en el següent enllaç:
 
+https://github.com/epou/adult_income/blob/master/code/census_analysis.R
+
 Les dades de sortida un cop netejades les dades s'han exportat mitjançant la comanda següent:
 
 `write.csv(df, file="adult-out.csv")`
 
-Es troben al següent enllaç de GitHub.
+Es troben al següent enllaç de GitHub: https://github.com/epou/adult_income/blob/master/csv/output/adult-out.csv
