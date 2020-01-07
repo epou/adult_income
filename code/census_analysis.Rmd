@@ -1,11 +1,13 @@
 ---
-title: "PRAC2: Neteja i anàlisi de les dades"
+title: 'PRAC2: Neteja i anàlisi de les dades'
 author: "Enric Pou"
 date: "2/1/2020"
 output:
-  html_document:
+  pdf_document:
     toc: yes
+  html_document:
     df_print: paged
+    toc: yes
 ---
 
 ```{r setup, include=FALSE}
@@ -461,8 +463,8 @@ Tal com s'ha comentat previament, sería d'interés poder realitzar prediccions 
 
 Primer ens dividim el conjunt en train/test.
 
-```{r traintest}
-library(caTools, message=FALSE, warning=FALSE)
+```{r traintest, message=FALSE, warning=FALSE}
+library(caTools)
 # Fixem un valor per a que es pugui reproduir
 set.seed(420)
 samples = sample.split(df$age, SplitRatio = 0.75)
@@ -651,10 +653,10 @@ Per finalitzar, s'ha fet una regressió logística per a predir si el nivell d'i
 
 El códi en R es pot trobar a GitHub en el següent enllaç:
 
-https://github.com/epou/adult_income/blob/master/census_analysis.R
+https://github.com/epou/adult_income/blob/master/code/census_analysis.R
 
 Les dades de sortida un cop netejades les dades s'han exportat mitjançant la comanda següent:
 
 `write.csv(df, file="adult-out.csv")`
 
-Es troben al següent enllaç de GitHub: https://github.com/epou/adult_income/blob/master/adult-out.csv
+Es troben al següent enllaç de GitHub: https://github.com/epou/adult_income/blob/master/csv/output/adult-out.csv
